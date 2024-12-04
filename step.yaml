@@ -1,0 +1,43 @@
+---
+apiVersion: v2
+kind: DefaultJob
+id: RedlineSonar
+name: RedlineSonar
+description: flow redline check with sonar
+helpUrl: https://atomgit.com/flow-step-custom/RedlineSonar
+execution:
+  executor: node
+  main: dist/index.js
+items:
+  - label: Sonar服务器地址
+    name: STEP_SONAR_HOST
+    type: input
+  - label: Sonar Token
+    name: STEP_SONAR_TOKEN
+    type: password
+    rules:
+      - require: false
+  - label: Sonar Project Key
+    name: STEP_SONAR_PROJECT_KEY
+    type: input
+  - label: 红线信息
+    name: CHECK_REDLINES
+    type: addable_group
+    rules:
+      - require: false
+    add_button:
+      type: icon
+      icon: plus
+      text: 增加红线
+      tip:
+        icon: question-circle
+        description: 红线校验失败任务将失败
+    template:
+      items:
+        - name: redline
+          label: 红线
+          position: flat
+          type: custom_redline_dropdown
+          datamap: '[{"key": "Bugs","type": "LE"},{"key": "Vulnerabilities","type": "LE"},{"key": "Smells","type": "LE"},{"key": "Coverage","type": "GE"}]'
+          rules:
+            - require: false
