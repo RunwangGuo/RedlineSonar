@@ -62,10 +62,11 @@ async function runStep(): Promise<void> {
 
 /**
  * 将指标数据转换为红线数据
- * @param key
- * @param title
- * @param value
- * @param style
+ *
+ * @param key 和step.yaml中红线定义的key一致
+ * @param title 字段名称
+ * @param value 字段值
+ * @param style Error: 红色，Warning: 橙色，Default: 灰色
  */
 function generateRedlineResult(key: string, title: string, value: number, style: string) {
     const redlineResult = {} as RedlineResult
