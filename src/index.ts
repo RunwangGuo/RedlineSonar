@@ -57,7 +57,11 @@ async function runStep(): Promise<void> {
     redlineInfo.title = 'Redline Sonar'
     redlineInfo.reportUrl = `${params.sonarHost}/component_measures?id=${params.sonarProjectKey}`
     redlineInfo.readlineResults = readlineResults
-    step.redline.redlineCheck(redlineInfo, process.env['CHECK_REDLINES'])
+    const checkResult = step.redline.redlineCheck(redlineInfo, process.env['CHECK_REDLINES'])
+    if (!checkResult){
+        step.error('Redline check failed')
+        process.exit(-1)
+    }
 }
 
 /**

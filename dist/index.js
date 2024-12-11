@@ -47,21 +47,26 @@ const redline = __importStar(__nccwpck_require__(58693));
 const process_1 = __importDefault(__nccwpck_require__(77282));
 const params_1 = __nccwpck_require__(62017);
 const axios_1 = __importDefault(__nccwpck_require__(88757));
+function logAndValidParams(params) {
+    step.info(`PIPELINE_ID=${params.pipelineID}`);
+    step.info(`PIPELINE_NAME=${params.pipelineName}`);
+    step.info(`BUILD_NUMBER=${params.buildNumber}`);
+    step.info(`WORK_SPACE=${params.workSpace}`);
+    step.info(`PROJECT_DIR=${params.projectDir}`);
+    step.info(`BUILD_JOB_ID=${params.buildJobID}`);
+    step.info(`SONAR_HOST=${params.sonarHost}`);
+    step.info(`SONAR_PROJECT_KEY=${params.sonarProjectKey}`);
+    if (params.sonarHost === '' || params.sonarProjectKey === '') {
+        throw new Error('sonarHost or sonarProjectKey is empty');
+    }
+    step.debug(`SONAR_TOKEN=${params.sonarToken}`);
+}
 function runStep() {
     return __awaiter(this, void 0, void 0, function* () {
         const params = (0, params_1.getParams)();
-        step.info(`PIPELINE_ID=${params.pipelineID}`);
-        step.info(`PIPELINE_NAME=${params.pipelineName}`);
-        step.info(`BUILD_NUMBER=${params.buildNumber}`);
-        step.info(`WORK_SPACE=${params.workSpace}`);
-        step.info(`PROJECT_DIR=${params.projectDir}`);
-        step.info(`BUILD_JOB_ID=${params.buildJobID}`);
-        step.info(`SONAR_HOST=${params.sonarHost}`);
-        step.info(`SONAR_PROJECT_KEY=${params.sonarProjectKey}`);
-        if (params.sonarHost === '' || params.sonarProjectKey === '') {
-            throw new Error('sonarHost or sonarProjectKey is empty');
-        }
-        step.debug(`SONAR_TOKEN=${params.sonarToken}`);
+        // 输出基础信息和检验入参
+        logAndValidParams(params);
+        // 调用 sonar api 获取指定项目的指标数据
         const metrics = yield requestSonarMetrics(`${params.sonarHost}/api/measures/search`, params.sonarToken, {
             projectKeys: `${params.sonarProjectKey}`,
             metricKeys: 'alert_status,bugs,reliability_rating,vulnerabilities,security_rating,code_smells,sqale_rating,duplicated_lines_density,coverage,ncloc,ncloc_language_distribution'
@@ -71,30 +76,50 @@ function runStep() {
         const vulnerabilities = Number(metrics['vulnerabilities']);
         const smells = Number(metrics['code_smells']);
         const coverage = Number(metrics['coverage']);
+        // 准备红线数据
         const readlineResults = [];
-        const bugsRR = covertToRedlineResult("Bugs", "缺陷", bugs, redline.Error);
+        const bugsRR = generateRedlineResult("Bugs", "缺陷", bugs, redline.Error);
         readlineResults.push(bugsRR);
-        const vulnerabilitiesRR = covertToRedlineResult("Vulnerabilities", "漏洞", vulnerabilities, redline.Error);
+        const vulnerabilitiesRR = generateRedlineResult("Vulnerabilities", "漏洞", vulnerabilities, redline.Error);
         readlineResults.push(vulnerabilitiesRR);
-        const smellsRR = covertToRedlineResult("Smells", "坏味道", smells, redline.Error);
+        const smellsRR = generateRedlineResult("Smells", "坏味道", smells, redline.Error);
         readlineResults.push(smellsRR);
-        const coverageRR = covertToRedlineResult("Coverage", "覆盖率", coverage, redline.Warning);
+        const coverageRR = generateRedlineResult("Coverage", "覆盖率", coverage, redline.Warning);
         readlineResults.push(coverageRR);
+        // 调用 sdk 进行红线检验和记录报告链接信息
         const redlineInfo = {};
         redlineInfo.title = 'Redline Sonar';
         redlineInfo.reportUrl = `${params.sonarHost}/component_measures?id=${params.sonarProjectKey}`;
         redlineInfo.readlineResults = readlineResults;
-        step.redline.redlineCheck(redlineInfo, process_1.default.env['CHECK_REDLINES']);
+        const checkResult = step.redline.redlineCheck(redlineInfo, process_1.default.env['CHECK_REDLINES']);
+        if (!checkResult) {
+            step.error('Redline check failed');
+            process_1.default.exit(-1);
+        }
     });
 }
-function covertToRedlineResult(key, title, value, style) {
-    const totalRedlineResult = {};
-    totalRedlineResult.key = key;
-    totalRedlineResult.title = title;
-    totalRedlineResult.value = value;
-    totalRedlineResult.style = style;
-    return totalRedlineResult;
+/**
+ * 将指标数据转换为红线数据
+ *
+ * @param key 和step.yaml中红线定义的key一致
+ * @param title 字段名称
+ * @param value 字段值
+ * @param style Error: 红色，Warning: 橙色，Default: 灰色
+ */
+function generateRedlineResult(key, title, value, style) {
+    const redlineResult = {};
+    redlineResult.key = key;
+    redlineResult.title = title;
+    redlineResult.value = value;
+    redlineResult.style = style;
+    return redlineResult;
 }
+/**
+ * 请求 sonar api
+ * @param url
+ * @param token
+ * @param params
+ */
 function requestSonarMetrics(url, token, params) {
     var _a;
     return __awaiter(this, void 0, void 0, function* () {
@@ -1125,9 +1150,11 @@ exports.callbackUrl = callbackUrl;
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.appendActions = exports.runAction = void 0;
+exports.appendActions = exports.runAction = exports.ACTION_TYPE_EXECUTE = exports.ACTION_TYPE_HIDDEN = void 0;
 const utils_1 = __nccwpck_require__(2246);
 const outputs_1 = __nccwpck_require__(48975);
+exports.ACTION_TYPE_HIDDEN = "HIDDEN";
+exports.ACTION_TYPE_EXECUTE = "EXECUTE";
 function runAction(action) {
     if ((0, utils_1.isEmpty)(action)) {
         return;
@@ -1152,7 +1179,7 @@ function appendActions(actions) {
             title: action.name,
             action: action.action,
             disable: false,
-            hidden: action.hidden,
+            hidden: action.type === "HIDDEN",
             metadata: {
                 order: action.order
             }
@@ -1163,6 +1190,32 @@ function appendActions(actions) {
 }
 exports.appendActions = appendActions;
 //# sourceMappingURL=action.js.map
+
+/***/ }),
+
+/***/ 70222:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.saveEnvVar = void 0;
+const utils_1 = __nccwpck_require__(2246);
+const outputs_1 = __nccwpck_require__(48975);
+/**
+ * save env key=value to output, which will be exported when agentless job next instance run
+ *
+ * @param key
+ * @param value
+ */
+function saveEnvVar(key, value) {
+    if ((0, utils_1.isEmpty)(key) || (0, utils_1.isEmpty)(value)) {
+        return;
+    }
+    (0, outputs_1.addOutput)(`${key}=${value}`);
+}
+exports.saveEnvVar = saveEnvVar;
+//# sourceMappingURL=env.js.map
 
 /***/ }),
 
@@ -1201,10 +1254,14 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const action = __importStar(__nccwpck_require__(51200));
 const message = __importStar(__nccwpck_require__(6851));
 const link = __importStar(__nccwpck_require__(64714));
-exports["default"] = Object.assign(Object.assign(Object.assign({}, message), action), link);
+const env = __importStar(__nccwpck_require__(70222));
+const summary = __importStar(__nccwpck_require__(92262));
+exports["default"] = Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, message), action), link), env), summary);
 __exportStar(__nccwpck_require__(51200), exports);
 __exportStar(__nccwpck_require__(6851), exports);
 __exportStar(__nccwpck_require__(64714), exports);
+__exportStar(__nccwpck_require__(70222), exports);
+__exportStar(__nccwpck_require__(92262), exports);
 //# sourceMappingURL=index.js.map
 
 /***/ }),
@@ -1264,6 +1321,30 @@ function appendErrorMessage(message) {
 }
 exports.appendErrorMessage = appendErrorMessage;
 //# sourceMappingURL=message.js.map
+
+/***/ }),
+
+/***/ 92262:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.appendSummaryInfo = void 0;
+const utils_1 = __nccwpck_require__(2246);
+const outputs_1 = __nccwpck_require__(48975);
+function appendSummaryInfo(title, message) {
+    if ((0, utils_1.isEmpty)(title) || (0, utils_1.isEmpty)(message)) {
+        return;
+    }
+    const messageObj = {
+        message: message,
+        title: title
+    };
+    (0, outputs_1.addOutput)(`SUMMARY_INFO=${JSON.stringify(messageObj)}`);
+}
+exports.appendSummaryInfo = appendSummaryInfo;
+//# sourceMappingURL=summary.js.map
 
 /***/ }),
 
@@ -1906,6 +1987,11 @@ function redlineCheckResult(redlines, key, value) {
     if (!redline)
         return true;
     const { type, threshold } = redline;
+    // 当 threshold 为字符串时，必须为数字字符串
+    if (isNaN(Number(threshold))) {
+        logging_1.default.error(`skip check redline key ${redline.key}, threshold ${threshold} must be a number or number string`);
+        return false;
+    }
     let checkResult;
     switch (type) {
         case 'ge': // 大于等于
@@ -1949,6 +2035,7 @@ function redlineCheck(redlineInfo, checkRedlines) {
     if (redlineInfo.reportUrl) {
         reportResultUrl(redlineInfo.reportUrl);
     }
+    let checkResult = true;
     for (const redline of redlineInfo.readlineResults) {
         const outputName = `[${process_1.default.env['stepIdentifier']}]STAT_NAME_${redline.key}:${redline.title}`;
         outputs.addOutput(outputName);
@@ -1960,9 +2047,12 @@ function redlineCheck(redlineInfo, checkRedlines) {
         outputs.addOutput(outputStyle);
         logging_1.default.info(outputStyle);
         if (checkRedlines) {
-            redlineCheckResult(JSON.parse(checkRedlines), redline.key, redline.value);
+            if (!redlineCheckResult(JSON.parse(checkRedlines), redline.key, redline.value)) {
+                checkResult = false;
+            }
         }
     }
+    return checkResult;
 }
 exports.redlineCheck = redlineCheck;
 function reportResultUrl(reportUrl) {
@@ -13442,6 +13532,101 @@ module.exports = fill
 
 /***/ }),
 
+/***/ 19227:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var bind = __nccwpck_require__(88334);
+
+var $apply = __nccwpck_require__(54177);
+var $call = __nccwpck_require__(2808);
+var $reflectApply = __nccwpck_require__(48309);
+
+/** @type {import('./actualApply')} */
+module.exports = $reflectApply || bind.call($call, $apply);
+
+
+/***/ }),
+
+/***/ 82093:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var bind = __nccwpck_require__(88334);
+var $apply = __nccwpck_require__(54177);
+var actualApply = __nccwpck_require__(19227);
+
+/** @type {import('./applyBind')} */
+module.exports = function applyBind() {
+	return actualApply(bind, $apply, arguments);
+};
+
+
+/***/ }),
+
+/***/ 54177:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./functionApply')} */
+module.exports = Function.prototype.apply;
+
+
+/***/ }),
+
+/***/ 2808:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./functionCall')} */
+module.exports = Function.prototype.call;
+
+
+/***/ }),
+
+/***/ 86815:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var bind = __nccwpck_require__(88334);
+var $TypeError = __nccwpck_require__(6361);
+
+var $call = __nccwpck_require__(2808);
+var $actualApply = __nccwpck_require__(19227);
+
+/** @type {import('.')} */
+module.exports = function callBindBasic(args) {
+	if (args.length < 1 || typeof args[0] !== 'function') {
+		throw new $TypeError('a function is required');
+	}
+	return $actualApply(bind, $call, args);
+};
+
+
+/***/ }),
+
+/***/ 48309:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./reflectApply')} */
+module.exports = typeof Reflect !== 'undefined' && Reflect && Reflect.apply;
+
+
+/***/ }),
+
 /***/ 28803:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -13471,32 +13656,21 @@ module.exports = function callBoundIntrinsic(name, allowMissing) {
 "use strict";
 
 
-var bind = __nccwpck_require__(88334);
-var GetIntrinsic = __nccwpck_require__(74538);
 var setFunctionLength = __nccwpck_require__(64056);
 
-var $TypeError = __nccwpck_require__(6361);
-var $apply = GetIntrinsic('%Function.prototype.apply%');
-var $call = GetIntrinsic('%Function.prototype.call%');
-var $reflectApply = GetIntrinsic('%Reflect.apply%', true) || bind.call($call, $apply);
-
 var $defineProperty = __nccwpck_require__(6123);
-var $max = GetIntrinsic('%Math.max%');
+
+var callBindBasic = __nccwpck_require__(86815);
+var applyBind = __nccwpck_require__(82093);
 
 module.exports = function callBind(originalFunction) {
-	if (typeof originalFunction !== 'function') {
-		throw new $TypeError('a function is required');
-	}
-	var func = $reflectApply(bind, $call, arguments);
+	var func = callBindBasic(arguments);
+	var adjustedLength = originalFunction.length - (arguments.length - 1);
 	return setFunctionLength(
 		func,
-		1 + $max(0, originalFunction.length - (arguments.length - 1)),
+		1 + (adjustedLength > 0 ? adjustedLength : 0),
 		true
 	);
-};
-
-var applyBind = function applyBind() {
-	return $reflectApply(bind, $apply, arguments);
 };
 
 if ($defineProperty) {
@@ -16228,6 +16402,7 @@ function useColors() {
 
 	// Is webkit? http://stackoverflow.com/a/16459606/376773
 	// document is undefined in react-native: https://github.com/facebook/react-native/pull/1632
+	// eslint-disable-next-line no-return-assign
 	return (typeof document !== 'undefined' && document.documentElement && document.documentElement.style && document.documentElement.style.WebkitAppearance) ||
 		// Is firebug? http://stackoverflow.com/a/398120/376773
 		(typeof window !== 'undefined' && window.console && (window.console.firebug || (window.console.exception && window.console.table))) ||
@@ -16543,24 +16718,62 @@ function setup(env) {
 		createDebug.names = [];
 		createDebug.skips = [];
 
-		let i;
-		const split = (typeof namespaces === 'string' ? namespaces : '').split(/[\s,]+/);
-		const len = split.length;
+		const split = (typeof namespaces === 'string' ? namespaces : '')
+			.trim()
+			.replace(' ', ',')
+			.split(',')
+			.filter(Boolean);
 
-		for (i = 0; i < len; i++) {
-			if (!split[i]) {
-				// ignore empty strings
-				continue;
-			}
-
-			namespaces = split[i].replace(/\*/g, '.*?');
-
-			if (namespaces[0] === '-') {
-				createDebug.skips.push(new RegExp('^' + namespaces.slice(1) + '$'));
+		for (const ns of split) {
+			if (ns[0] === '-') {
+				createDebug.skips.push(ns.slice(1));
 			} else {
-				createDebug.names.push(new RegExp('^' + namespaces + '$'));
+				createDebug.names.push(ns);
 			}
 		}
+	}
+
+	/**
+	 * Checks if the given string matches a namespace template, honoring
+	 * asterisks as wildcards.
+	 *
+	 * @param {String} search
+	 * @param {String} template
+	 * @return {Boolean}
+	 */
+	function matchesTemplate(search, template) {
+		let searchIndex = 0;
+		let templateIndex = 0;
+		let starIndex = -1;
+		let matchIndex = 0;
+
+		while (searchIndex < search.length) {
+			if (templateIndex < template.length && (template[templateIndex] === search[searchIndex] || template[templateIndex] === '*')) {
+				// Match character or proceed with wildcard
+				if (template[templateIndex] === '*') {
+					starIndex = templateIndex;
+					matchIndex = searchIndex;
+					templateIndex++; // Skip the '*'
+				} else {
+					searchIndex++;
+					templateIndex++;
+				}
+			} else if (starIndex !== -1) { // eslint-disable-line no-negated-condition
+				// Backtrack to the last '*' and try to match more characters
+				templateIndex = starIndex + 1;
+				matchIndex++;
+				searchIndex = matchIndex;
+			} else {
+				return false; // No match
+			}
+		}
+
+		// Handle trailing '*' in template
+		while (templateIndex < template.length && template[templateIndex] === '*') {
+			templateIndex++;
+		}
+
+		return templateIndex === template.length;
 	}
 
 	/**
@@ -16571,8 +16784,8 @@ function setup(env) {
 	*/
 	function disable() {
 		const namespaces = [
-			...createDebug.names.map(toNamespace),
-			...createDebug.skips.map(toNamespace).map(namespace => '-' + namespace)
+			...createDebug.names,
+			...createDebug.skips.map(namespace => '-' + namespace)
 		].join(',');
 		createDebug.enable('');
 		return namespaces;
@@ -16586,39 +16799,19 @@ function setup(env) {
 	* @api public
 	*/
 	function enabled(name) {
-		if (name[name.length - 1] === '*') {
-			return true;
-		}
-
-		let i;
-		let len;
-
-		for (i = 0, len = createDebug.skips.length; i < len; i++) {
-			if (createDebug.skips[i].test(name)) {
+		for (const skip of createDebug.skips) {
+			if (matchesTemplate(name, skip)) {
 				return false;
 			}
 		}
 
-		for (i = 0, len = createDebug.names.length; i < len; i++) {
-			if (createDebug.names[i].test(name)) {
+		for (const ns of createDebug.names) {
+			if (matchesTemplate(name, ns)) {
 				return true;
 			}
 		}
 
 		return false;
-	}
-
-	/**
-	* Convert regexp to namespace
-	*
-	* @param {RegExp} regxep
-	* @return {String} namespace
-	* @api private
-	*/
-	function toNamespace(regexp) {
-		return regexp.toString()
-			.substring(2, regexp.toString().length - 2)
-			.replace(/\.\*\?$/, '*');
 	}
 
 	/**
@@ -18906,6 +19099,37 @@ module.exports = digestAuthHeader;
 
 /***/ }),
 
+/***/ 62693:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var callBind = __nccwpck_require__(86815);
+var gOPD = __nccwpck_require__(18501);
+
+// eslint-disable-next-line no-extra-parens, no-proto
+var hasProtoAccessor = /** @type {{ __proto__?: typeof Array.prototype }} */ ([]).__proto__ === Array.prototype;
+
+// eslint-disable-next-line no-extra-parens
+var desc = hasProtoAccessor && gOPD && gOPD(Object.prototype, /** @type {keyof typeof Object.prototype} */ ('__proto__'));
+
+var $Object = Object;
+var $getPrototypeOf = $Object.getPrototypeOf;
+
+/** @type {import('./get')} */
+module.exports = desc && typeof desc.get === 'function'
+	? callBind([desc.get])
+	: typeof $getPrototypeOf === 'function'
+		? /** @type {import('./get')} */ function getDunder(value) {
+			// eslint-disable-next-line eqeqeq
+			return $getPrototypeOf(value == null ? value : $Object(value));
+		}
+		: false;
+
+
+/***/ }),
+
 /***/ 14401:
 /***/ ((module) => {
 
@@ -19111,15 +19335,13 @@ module.exports = eos;
 /***/ }),
 
 /***/ 6123:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+/***/ ((module) => {
 
 "use strict";
 
 
-var GetIntrinsic = __nccwpck_require__(74538);
-
 /** @type {import('.')} */
-var $defineProperty = GetIntrinsic('%Object.defineProperty%', true) || false;
+var $defineProperty = Object.defineProperty || false;
 if ($defineProperty) {
 	try {
 		$defineProperty({}, 'a', { value: 1 });
@@ -23599,14 +23821,8 @@ var getEvalledConstructor = function (expressionSyntax) {
 	} catch (e) {}
 };
 
-var $gOPD = Object.getOwnPropertyDescriptor;
-if ($gOPD) {
-	try {
-		$gOPD({}, '');
-	} catch (e) {
-		$gOPD = null; // this is IE 8, which has a broken gOPD
-	}
-}
+var $gOPD = __nccwpck_require__(18501);
+var $defineProperty = __nccwpck_require__(6123);
 
 var throwTypeError = function () {
 	throw new $TypeError();
@@ -23629,13 +23845,14 @@ var ThrowTypeError = $gOPD
 	: throwTypeError;
 
 var hasSymbols = __nccwpck_require__(40587)();
-var hasProto = __nccwpck_require__(45894)();
+var getDunderProto = __nccwpck_require__(62693);
 
-var getProto = Object.getPrototypeOf || (
-	hasProto
-		? function (x) { return x.__proto__; } // eslint-disable-line no-proto
-		: null
-);
+var getProto = (typeof Reflect === 'function' && Reflect.getPrototypeOf)
+	|| Object.getPrototypeOf
+	|| getDunderProto;
+
+var $apply = __nccwpck_require__(54177);
+var $call = __nccwpck_require__(2808);
 
 var needsEval = {};
 
@@ -23683,6 +23900,7 @@ var INTRINSICS = {
 	'%Math%': Math,
 	'%Number%': Number,
 	'%Object%': Object,
+	'%Object.getOwnPropertyDescriptor%': $gOPD,
 	'%parseFloat%': parseFloat,
 	'%parseInt%': parseInt,
 	'%Promise%': typeof Promise === 'undefined' ? undefined : Promise,
@@ -23708,7 +23926,11 @@ var INTRINSICS = {
 	'%URIError%': $URIError,
 	'%WeakMap%': typeof WeakMap === 'undefined' ? undefined : WeakMap,
 	'%WeakRef%': typeof WeakRef === 'undefined' ? undefined : WeakRef,
-	'%WeakSet%': typeof WeakSet === 'undefined' ? undefined : WeakSet
+	'%WeakSet%': typeof WeakSet === 'undefined' ? undefined : WeakSet,
+
+	'%Function.prototype.call%': $call,
+	'%Function.prototype.apply%': $apply,
+	'%Object.defineProperty%': $defineProperty
 };
 
 if (getProto) {
@@ -23803,11 +24025,11 @@ var LEGACY_ALIASES = {
 
 var bind = __nccwpck_require__(88334);
 var hasOwn = __nccwpck_require__(62157);
-var $concat = bind.call(Function.call, Array.prototype.concat);
-var $spliceApply = bind.call(Function.apply, Array.prototype.splice);
-var $replace = bind.call(Function.call, String.prototype.replace);
-var $strSlice = bind.call(Function.call, String.prototype.slice);
-var $exec = bind.call(Function.call, RegExp.prototype.exec);
+var $concat = bind.call($call, Array.prototype.concat);
+var $spliceApply = bind.call($apply, Array.prototype.splice);
+var $replace = bind.call($call, String.prototype.replace);
+var $strSlice = bind.call($call, String.prototype.slice);
+var $exec = bind.call($call, RegExp.prototype.exec);
 
 /* adapted from https://github.com/lodash/lodash/blob/4.17.15/dist/lodash.js#L6735-L6744 */
 var rePropName = /[^%.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\\]|\\.)*?)\2)\]|(?=(?:\.|\[\])(?:\.|\[\]|%$))/g;
@@ -24111,16 +24333,26 @@ module.exports.array = function (stream, opts) {
 
 /***/ }),
 
+/***/ 57087:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./gOPD')} */
+module.exports = Object.getOwnPropertyDescriptor;
+
+
+/***/ }),
+
 /***/ 18501:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 "use strict";
 
 
-var GetIntrinsic = __nccwpck_require__(74538);
-
 /** @type {import('.')} */
-var $gOPD = GetIntrinsic('%Object.getOwnPropertyDescriptor%', true);
+var $gOPD = __nccwpck_require__(57087);
 
 if ($gOPD) {
 	try {
@@ -25151,29 +25383,6 @@ hasPropertyDescriptors.hasArrayLengthDefineBug = function hasArrayLengthDefineBu
 };
 
 module.exports = hasPropertyDescriptors;
-
-
-/***/ }),
-
-/***/ 45894:
-/***/ ((module) => {
-
-"use strict";
-
-
-var test = {
-	__proto__: null,
-	foo: {}
-};
-
-// @ts-expect-error: TS errors on an inherited property for some reason
-var result = { __proto__: test }.foo === test.foo
-	&& !(test instanceof Object);
-
-/** @type {import('.')} */
-module.exports = function hasProto() {
-	return result;
-};
 
 
 /***/ }),
@@ -73667,7 +73876,7 @@ exports.Minipass = Minipass;
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 "use strict";
-// Axios v1.7.8 Copyright (c) 2024 Matt Zabriskie and contributors
+// Axios v1.7.9 Copyright (c) 2024 Matt Zabriskie and contributors
 
 
 const FormData$1 = __nccwpck_require__(64334);
@@ -75747,7 +75956,7 @@ function buildFullPath(baseURL, requestedURL) {
   return requestedURL;
 }
 
-const VERSION = "1.7.8";
+const VERSION = "1.7.9";
 
 function parseProtocol(url) {
   const match = /^([-+\w]{1,25})(:?\/\/|:)/.exec(url);
