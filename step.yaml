@@ -1,7 +1,7 @@
 ---
 apiVersion: v2
 kind: DefaultJob
-id: RedlineSonar
+id: RunwangRedlineSonar
 name: RedlineSonar
 description: flow redline check with sonar
 helpUrl: https://atomgit.com/flow-step-custom/RedlineSonar

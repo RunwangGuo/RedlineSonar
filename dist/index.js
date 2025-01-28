@@ -89,7 +89,9 @@ function runStep() {
         // 调用 sdk 进行红线检验和记录报告链接信息
         const redlineInfo = {};
         redlineInfo.title = 'Redline Sonar';
-        redlineInfo.reportUrl = `${params.sonarHost}/component_measures?id=${params.sonarProjectKey}`;
+        // redlineInfo.reportUrl = `${params.sonarHost}/component_measures?id=${params.sonarProjectKey}`
+        // 优化重定向逻辑
+        redlineInfo.reportUrl = `${params.sonarHost}/issues?issueStatuses=OPEN&id=${params.sonarProjectKey}`;
         redlineInfo.readlineResults = readlineResults;
         const checkResult = step.redline.redlineCheck(redlineInfo, process_1.default.env['CHECK_REDLINES']);
         if (!checkResult) {
