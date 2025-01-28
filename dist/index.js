@@ -91,7 +91,7 @@ function runStep() {
         redlineInfo.title = 'Redline Sonar';
         // redlineInfo.reportUrl = `${params.sonarHost}/component_measures?id=${params.sonarProjectKey}`
         // 优化重定向逻辑
-        redlineInfo.reportUrl = `${params.sonarHost}/issues?issueStatuses=OPEN&id=${params.sonarProjectKey}`;
+        redlineInfo.reportUrl = `${params.sonarHost}/project/issues?issueStatuses=OPEN&id=${params.sonarProjectKey}`;
         redlineInfo.readlineResults = readlineResults;
         const checkResult = step.redline.redlineCheck(redlineInfo, process_1.default.env['CHECK_REDLINES']);
         if (!checkResult) {

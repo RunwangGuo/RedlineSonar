@@ -57,7 +57,7 @@ async function runStep(): Promise<void> {
     redlineInfo.title = 'Redline Sonar'
     // redlineInfo.reportUrl = `${params.sonarHost}/component_measures?id=${params.sonarProjectKey}`
     // 优化重定向逻辑
-    redlineInfo.reportUrl = `${params.sonarHost}/issues?issueStatuses=OPEN&id=${params.sonarProjectKey}`
+    redlineInfo.reportUrl = `${params.sonarHost}/project/issues?issueStatuses=OPEN&id=${params.sonarProjectKey}`
 
     redlineInfo.readlineResults = readlineResults
     const checkResult = step.redline.redlineCheck(redlineInfo, process.env['CHECK_REDLINES'])
